@@ -24,7 +24,6 @@
 
 from sklearn.model_selection import train_test_split
 import torch
-from torch.cuda.amp import autocast, GradScaler
 from torch.utils.data import DataLoader
 import torch.nn as nn
 import torchvision
@@ -35,11 +34,12 @@ from xy_dataset import XYDataset
 
 
 class Trainer:
-    def __init__(self, directory: str, batch_size: int = 32, greyscale: bool = True) -> None:
+    def __init__(self, directory: str, batch_size: int = 16, greyscale: bool = True) -> None:
+#        self.greyscale = greyscale
         if greyscale:
             trans = transforms.Compose([
                 transforms.ColorJitter(0.2, 0.2, 0.2, 0.2),
-                transforms.Resize((448, 224)),
+                transforms.Resize((224, 224)),
                 transforms.ToTensor(),
                 transforms.Normalize([0.445], [0.269], inplace=True)
             ])
@@ -54,6 +54,7 @@ class Trainer:
         
         # initialise resnet 18 with one channel input data and two outputs (steering and throttle)
         self.model = torchvision.models.resnet18(pretrained=True)
+#        self.model = torchvision.models.resnet18(weights=torchvision.models.ResNet18_Weights.DEFAULT)
         if greyscale:
             self.model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
         self.model.fc = torch.nn.Linear(512, 2)
@@ -68,7 +69,7 @@ class Trainer:
         
     def train(self, epochs: int = 5):
         print("Training")
-        self.model, self.optimizer = self._train_eval(self.model.train(), self.train_loader, self.optimizer, epochs, GradScaler())
+        self.model = self._train_eval(self.model.train(), self.train_loader, self.optimizer, epochs)
         
     def evaluate(self):
         print("Evaluation")
@@ -77,9 +78,7 @@ class Trainer:
     def save_model(self, path: str = 'your_model.pth'):
         torch.save(self.model.state_dict(), path)
         
-    def _train_eval(self, model: nn.Module, dataloader: DataLoader, optimizer: torch.optim.Optimizer = None, epochs: int = 1, scaler: object = None):
-        grad_clip_value = 1.0
-            
+    def _train_eval(self, model: nn.Module, dataloader: DataLoader, optimizer: torch.optim.Optimizer = None, epochs: int = 1):
         progress_bar = tqdm.tqdm(total=epochs, desc="Training Progress in epochs" if model.training else "Validation Progress in epochs")
 
         for _ in range(0, epochs):
@@ -87,49 +86,35 @@ class Trainer:
             sum_loss = 0.0
             
             for images, xy in iter(dataloader):
-                # send data to device
-                images = images.to(self.device)
-                xy = xy.to(self.device)
-
                 if model.training:
                     # zero gradients of parameters
                     optimizer.zero_grad()
 
-                with autocast():
-                    # execute model to get outputs
-                    outputs = model(images)
-                    # compute MSE loss over x, y coordinates
-                    loss = torch.mean(torch.pow(outputs - xy, 2))
+                # execute model to get outputs
+                outputs = model(images.to(self.device))
+                # compute MSE loss over x, y coordinates
+                loss = torch.mean(torch.pow(outputs - xy.to(self.device), 2))
 
                 if model.training:
-                    # Perform backpropagation using the scaled gradients
-                    scaler.scale(loss).backward()
-                    
-                    # Unscale the gradients before clipping and optimization
-                    scaler.unscale_(optimizer)
-
-                    # Clip gradients to prevent exploding gradients
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=grad_clip_value)
-
-                    # Update the model's weights
-                    scaler.step(optimizer)
-
-                    # Updates the scale for next iteration.
-                    scaler.update()
+                    # run backpropogation to accumulate gradients
+                    loss.backward()
+                    # step optimizer to adjust parameters
+                    optimizer.step()
 
                 # increment progress
-                i += len(images)
-                sum_loss += float(loss)
+                i += len(xy)
+                sum_loss += float(loss.to(torch.device('cpu')))
                 
             # Update the progress bar with the progress and current loss
             progress_bar.update()
             progress_bar.set_postfix(loss=sum_loss / i)
                 
         model = model.eval()
-        return model, optimizer
+        torch.cuda.empty_cache()
+        return model
 
 if __name__ == "__main__":
-    trainer = Trainer(directory="/home/mati/JetRacer-RoadFollowing-Cpp/build/stereo/1694165232.458000")
+    trainer = Trainer(directory="/home/mati/data/stereo/1694165232.458000/combined")
     trainer.train()
     trainer.save_model()
     trainer.evaluate()
