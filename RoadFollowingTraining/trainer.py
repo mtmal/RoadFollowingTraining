@@ -35,26 +35,19 @@ from xy_dataset import XYDataset
 
 class Trainer:
     def __init__(self, directory: str, batch_size: int = 16, greyscale: bool = True) -> None:
-#        self.greyscale = greyscale
+        trans = transforms.Compose([
+            transforms.ColorJitter(0.2, 0.2, 0.2, 0.2),
+            transforms.Resize((224, 224)),
+            transforms.ToTensor()
+        ])
         if greyscale:
-            trans = transforms.Compose([
-                transforms.ColorJitter(0.2, 0.2, 0.2, 0.2),
-                transforms.Resize((224, 224)),
-                transforms.ToTensor(),
-                transforms.Normalize([0.445], [0.269], inplace=True)
-            ])
+            trans.transforms.append(transforms.Normalize([0.445], [0.269], inplace=True))
         else:
-            trans = transforms.Compose([
-                transforms.ColorJitter(0.2, 0.2, 0.2, 0.2),
-                transforms.Resize((224, 224)),
-                transforms.ToTensor(),
-                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225], inplace=True)
-            ])
+            trans.transforms.append(transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225], inplace=True))
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
         # initialise resnet 18 with one channel input data and two outputs (steering and throttle)
         self.model = torchvision.models.resnet18(pretrained=True)
-#        self.model = torchvision.models.resnet18(weights=torchvision.models.ResNet18_Weights.DEFAULT)
         if greyscale:
             self.model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
         self.model.fc = torch.nn.Linear(512, 2)
@@ -103,18 +96,17 @@ class Trainer:
 
                 # increment progress
                 i += len(xy)
-                sum_loss += float(loss.to(torch.device('cpu')))
+                sum_loss += float(loss)
                 
             # Update the progress bar with the progress and current loss
             progress_bar.update()
             progress_bar.set_postfix(loss=sum_loss / i)
-                
-        model = model.eval()
+
         torch.cuda.empty_cache()
         return model
 
 if __name__ == "__main__":
-    trainer = Trainer(directory="/home/mati/data/stereo/1694165232.458000/combined")
+    trainer = Trainer(directory="/home/jetson/data/stereo/1694165232.458000/combined")
     trainer.train()
     trainer.save_model()
     trainer.evaluate()
