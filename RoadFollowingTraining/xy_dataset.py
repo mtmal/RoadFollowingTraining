@@ -47,8 +47,8 @@ class XYDataset(torch.utils.data.Dataset):
     
     def __getitem__(self, idx):
         ann = self.annotations[idx]
-        image = cv2.imread(ann['image_path'], cv2.IMREAD_GRAYSCALE if self.greyscale else cv2.IMREAD_COLOR)
-        image = PIL.Image.fromarray(image)
+        image = PIL.Image.fromarray(
+            cv2.imread(ann['image_path'], cv2.IMREAD_GRAYSCALE if self.greyscale else cv2.IMREAD_COLOR))
         if self.transform is not None:
             image = self.transform(image)
         
@@ -63,11 +63,8 @@ class XYDataset(torch.utils.data.Dataset):
         return image, torch.Tensor([x, y])
     
     def _parse(self, path: str):
-        basename = os.path.basename(path)
-        items = basename.split('_')
-        x = items[0]
-        y = items[1]
-        return float(x), float(y)
+        items = os.path.basename(path).split('_')
+        return float(items[0]), float(items[1])
         
     def refresh(self):
         self.annotations = []
