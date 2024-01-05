@@ -71,7 +71,7 @@ class Trainer:
     def evaluate(self):
         self._train_eval(self.model.eval(), self.eval_loader)
 
-    def save_model(self, path: str = 'your_model.pth'):
+    def save_model(self, path: str = "your_model.pth"):
         torch.save(self.model.state_dict(), path)
 
     def _train_eval(self, model: torch.nn.Module, dataloader: DataLoader, optimizer: torch.optim.Optimizer = None, epochs: int = 1):
@@ -108,7 +108,7 @@ class Trainer:
         torch.cuda.empty_cache()
         return model
 
-    def optimise_model(self):
+    def optimise_model(self, path: str = "your_model.ts'"):
         if self.greyscale:
             inputs = [torch_tensorrt.Input(
                 min_shape=[2, 1, 224, 224],
@@ -123,7 +123,7 @@ class Trainer:
                 dtype=torch.half)]
 
         trt_ts_module = torch_tensorrt.compile(self.model.cuda().eval().half(), inputs=inputs, enabled_precisions={torch.half})
-        torch.jit.save(trt_ts_module, 'your_model.ts')
+        torch.jit.save(trt_ts_module, path)
         return trt_ts_module
 
 if __name__ == "__main__":
